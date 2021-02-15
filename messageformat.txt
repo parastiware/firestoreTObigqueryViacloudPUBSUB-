@@ -1,0 +1,147 @@
+{
+"message":"message to send",
+"sender":"Paras",
+"receiver":"Anyone"
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////
+const functions = require('firebase-functions');
+const PubSub = require('@google-cloud/pubsub');
+const admin = require('firebase-admin')
+const Firestore = require('@google-cloud/firestore')
+admin.initializeApp()
+
+const db = admin.firestore()
+
+exports.answerSubmit = functions.https.onCall((data ,context) => {
+    var userDoc = admin.firestore().collection('users').doc(context.auth.token.user_id)
+    db.collection('questions').doc(data.question.questionId).collection('correctAnswer').get().then((result) => {
+        var correctAnswer = result.docs[0].data()
+        console.log(`correct answer given? ${correctAnswer.answer} === ${data.answer}: ${correctAnswer.answer === data.answer}`)
+        data.isAnswerCorrect = correctAnswer.answer === data.answer
+        userDoc.set(context.auth.token)
+        userDoc.collection('answers').doc().set(data)
+        return data
+    }).catch((err) => {
+        console.error(`An error occurred: ${err}`)
+    })
+
+    return {
+       message: 'Your answer has been recorded.'
+    }
+})
+
+const pubsubClient = new PubSub(); 
+
+// Publish a message to Cloud Pub/Sub topic
+// https://firebase.google.com/docs/functions/firestore-events
+exports.publishMessageToTopic = functions.firestore.document('users/{userId}/answers/{answerId}').onCreate((snap,context) => {
+  console.log(`context.params.userId=${context.params.userId} context.params.answerId=${context.params.answerId}`);
+
+  //add the userId to the object
+  let answerDocument = Object.assign({}, snap.data() );
+  answerDocument.userId=context.params.userId;
+  
+  // convert the answerDocument to data buffer
+  const answerDocumentString=JSON.stringify(answerDocument);
+  console.log(`answerDocumentString=${answerDocumentString}`);
+  const dataBuffer = Buffer.from(answerDocumentString);
+
+  // The name for the new topic
+  const topicName = 'triviagameevents';
+ 
+  // Creates the new topic
+  return pubsubClient
+    .topic(topicName)
+    .publisher()
+    .publish(dataBuffer)
+    .then(messageId => {
+      console.log(`Message ${messageId} published.`);
+      return messageId;
+    })
+    .catch(err => {
+      console.error('ERROR:', err);
+    });
+});
+//////////////////////////////////////////////////////////////////////////////////
+
+
+exports.helloFirestore = (event, context) => {
+  const resource = context.resource;
+  // log out the resource string that triggered the function
+  console.log('Function triggered by change to: ' +  resource);
+  // now log the full event object
+  console.log(JSON.stringify(event));
+};
+
+
+//////////////////////////////////////////////////////////////////////////////////
+
+const Firestore = require('@google-cloud/firestore');
+
+const firestore = new Firestore({
+  projectId: process.env.GCP_PROJECT,
+});
+
+// Converts strings added to /messages/{pushId}/original to uppercase
+exports.makeUpperCase = (data, context) => {
+  const {resource} = context;
+  const affectedDoc = firestore.doc(resource.split('/documents/')[1]);
+
+  const curValue = data.value.fields.original.stringValue;
+  const newValue = curValue.toUpperCase();
+  console.log(`Replacing value: ${curValue} --> ${newValue}`);
+
+  return affectedDoc.set({
+    original: newValue,
+  });
+};
+
+//////////////////////////////////////////////////////////////////////////////////
+const Firestore = require('@google-cloud/firestore');
+const PubSub = require('@google-cloud/pubsub');
+
+const firestore = new Firestore({
+  projectId: process.env.GCP_PROJECT,
+});
+exports.firestoretrigger = (data, context) => {
+  const {resource} = context;
+  const affectedDoc = firestore.doc(resource.split('/documents/')[1]);
+
+  const curValue = data.value.fields.original.stringValue;
+
+// Converts strings added to /messages/{pushId}/original to uppercase
+
+exports.publishMessageToTopic = firestore.doc('messages/{messagesID}').onCreate((snap,context) => {
+  let userDoc = Object.assign({}, snap.data());
+  userDoc.messagesID=context.params.messagesID;
+    const msg =JSON.stringify(userDoc);
+    const dataBuffer = Buffer.from(msg);
+
+  // The name for the new topic
+  const topicName = 'projects/sreamdata/topics/messsages';
+const pubsubClient = new PubSub({
+  projectId: process.env.GCP_PROJECT,
+});
+ 
+  // Creates the new topic
+  return pubsubClient
+    .topic(topicName)
+    .publisher()
+    .publish(dataBuffer)
+    .then(messagesId => {
+      console.log(`Message ${messagesID} published.`);
+      return messagesId;
+    })
+    .catch(err => {
+      console.error('ERROR:', err);
+    });
+});
+  
+
+  return affectedDoc.set({
+    original: curValue,
+  });
+};
+////////////////////////////////////////////////////////////////////////
